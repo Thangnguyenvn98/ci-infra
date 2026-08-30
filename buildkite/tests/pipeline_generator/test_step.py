@@ -99,6 +99,50 @@ def test_selected_steps_include_transitive_dependencies():
     assert selected_keys == frozenset({"image-build", "prepare", "test"})
 
 
+def test_a_keyless_step_can_be_requested_by_its_generated_key():
+    """Selection has to resolve keys the way generation does.
+
+    Since every generated job carries a key, a keyless step is published under
+    `_generate_step_key(label)`. Selection used to skip keyless steps entirely,
+    so naming one raised `Unknown CI step key(s)` and took the whole pipeline
+    upload down with it -- not just that step. Every CPU, Arm and XPU suite in
+    vLLM is keyless, so none of them could be requested at all.
+    """
+    steps = [
+        Step(label="CPU-Kernel Tests", commands=["pytest kernels"]),
+        Step(label="Other", key="other", commands=["other"]),
+    ]
+
+    selected, selected_keys = select_steps_and_dependencies(
+        steps, frozenset({"cpu-kernel-tests"})
+    )
+
+    assert [step.label for step in selected] == ["CPU-Kernel Tests"]
+    assert selected_keys == frozenset({"cpu-kernel-tests"})
+
+
+def test_a_keyless_dependency_resolves_too():
+    """The prerequisite walk reads the same map, so a keyless step named in
+    `depends_on` has to be findable there or a legitimate request looks like a
+    dangling dependency."""
+    steps = [
+        Step(label="CPU-Kernel Tests", commands=["pytest kernels"]),
+        Step(
+            label="Downstream",
+            key="downstream",
+            depends_on=["cpu-kernel-tests"],
+            commands=["true"],
+        ),
+    ]
+
+    selected, selected_keys = select_steps_and_dependencies(
+        steps, frozenset({"downstream"})
+    )
+
+    assert selected_keys == frozenset({"downstream", "cpu-kernel-tests"})
+    assert {step.label for step in selected} == {"Downstream", "CPU-Kernel Tests"}
+
+
 def test_selected_steps_reject_unknown_key():
     with pytest.raises(ValueError, match="Unknown CI step key.*missing"):
         select_steps_and_dependencies(

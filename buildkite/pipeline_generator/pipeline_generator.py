@@ -5,6 +5,7 @@ from typing import FrozenSet, List, Optional, Tuple
 import yaml
 
 from buildkite_step import (
+    _generate_step_key,
     add_precommit_dependency,
     convert_group_step_to_buildkite_step,
     create_precommit_group_step,
@@ -91,13 +92,19 @@ def select_steps_and_dependencies(
     if requested_step_keys is None:
         return steps, None
 
+    # The key a step will actually be published under, which is not always the
+    # one its yaml wrote. Since every generated job carries a key, selection has
+    # to resolve the same way generation does, or a keyless step can never be
+    # requested: it would be absent from this map and reported as unknown.
+    def selection_key(step: Step) -> str:
+        return step.key or _generate_step_key(step.label)
+
     steps_by_key = {}
     for step in steps:
-        if not step.key:
-            continue
-        if step.key in steps_by_key:
-            raise ValueError(f"Duplicate CI step key: {step.key}")
-        steps_by_key[step.key] = step
+        key = selection_key(step)
+        if key in steps_by_key:
+            raise ValueError(f"Duplicate CI step key: {key}")
+        steps_by_key[key] = step
 
     missing = requested_step_keys - steps_by_key.keys()
     if missing:
@@ -116,7 +123,7 @@ def select_steps_and_dependencies(
                 selected_step_keys.add(dependency)
                 pending.append(dependency)
 
-    selected = [step for step in steps if step.key in selected_step_keys]
+    selected = [step for step in steps if selection_key(step) in selected_step_keys]
     return selected, frozenset(selected_step_keys)
 
 

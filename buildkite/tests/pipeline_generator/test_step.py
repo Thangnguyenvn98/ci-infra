@@ -121,6 +121,22 @@ def test_a_keyless_step_can_be_requested_by_its_generated_key():
     assert selected_keys == frozenset({"cpu-kernel-tests"})
 
 
+def test_a_requested_keyless_step_is_not_hidden_behind_a_block(fake_global_config):
+    """Selection and the run predicate have to agree.
+
+    Getting only the first one right puts the step in the pipeline and then gates
+    it behind a manual block, which reads as "nothing ran" exactly like the bug
+    it replaced. Build 86238 passed with both requested steps blocked.
+    """
+    step = Step(label="CPU-Kernel Tests", commands=["pytest kernels"])
+
+    fake_global_config["only_step_keys"] = frozenset({"cpu-kernel-tests"})
+    assert buildkite_step._step_should_run(step, [])
+
+    fake_global_config["only_step_keys"] = frozenset({"something-else"})
+    assert not buildkite_step._step_should_run(step, [])
+
+
 def test_a_keyless_dependency_resolves_too():
     """The prerequisite walk reads the same map, so a keyless step named in
     `depends_on` has to be findable there or a legitimate request looks like a

@@ -949,7 +949,12 @@ def _step_should_run(step: Step, list_file_diff: List[str]) -> bool:
         return False
     global_config = get_global_config()
     if global_config["only_step_keys"] is not None:
-        return step.key in global_config["only_step_keys"]
+        # The generated key, not the yaml one: a keyless step has no `step.key`,
+        # so comparing it here answers False and the step is emitted behind a
+        # manual block instead of running. Selection resolves the same way.
+        return (
+            step.key or _generate_step_key(step.label)
+        ) in global_config["only_step_keys"]
     if step.key and (
         step.key.startswith("image-build") or step.key in AMD_ALWAYS_RUN_STEP_KEYS
     ):
